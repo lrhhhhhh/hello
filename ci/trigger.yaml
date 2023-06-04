@@ -1,0 +1,76 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress
+  namespace: tekton-pipelines
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: liuronghao.com
+      http:
+        paths:
+          - pathType: Prefix
+            path: "/webhook/hello"
+            backend:
+              service:
+                name: el-hello-listener
+                port:
+                  number: 80
+
+---
+apiVersion: triggers.tekton.dev/v1alph1
+kind: EvenListener
+metadata:
+  name: hello-listener # 对应的服务名为el-hello-listener
+spec:
+  serviceAccountName: hello-ci-sa
+  triggers:
+    - name: github-push-events-trigger
+      interceptors:
+        - ref:
+          name: github
+          params:
+            - name: secretRef
+              value:
+                secretName: webhook-secret
+                secretKey: secretToken
+            - name: eventTypes
+              value:
+                - Push Hook
+      bindings:
+        - name: gitrevision
+          value: $(body.checkout_sha)
+        - name: gitrepositoryurl
+          value: $(body.repository.git_http_url)
+      template:
+        ref: github-template
+
+---
+apiVersion: triggers.tekton.dev/v1alph1
+kind: TriggerTemplate
+metadata:
+  name: github-template
+spec:
+  params:
+    - name: gitrevision
+    - name: gitrepositoryurl
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipeRun
+      metadata:
+        generateName: gitlab-run-
+      spec:
+        serviceAccountName: hello-ci-sa
+        pipelineRef:
+          name: hello-pipeline
+        workspace:
+          - name: repo
+            persistentVolumnClaim:
+              claimName: repo-pvc
+        params:
+          - name: git_url
+            value: $(tt.params.gitrepositoryurl)
+          - name: git_infra_url
+            value: xxx
