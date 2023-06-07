@@ -1,3 +1,6 @@
+
+## intro
+v0.0.1
 - 基础组件的安装：
 - 项目代码与CI流水线
 - CD repo： 
@@ -42,5 +45,6 @@ stringData:
   secretToken: ""
 ```
 cat ~/.ssh/id_rsa | base64 -w0  
+
 
 
