@@ -1,3 +1,9 @@
+apiVersion: v1 
+kind: Namespace
+metadata:
+  name: hello
+
+---
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
@@ -6,87 +12,89 @@ metadata:
 spec:
   params:
     - name: REVISION
-      value: main
-  pipelineSpec:
-    params:
-      - name: REVISION
-        type: string
-        description: Revision to checkout. (branch, tag, sha, ref, etc...)
-        default: ""
-    tasks:
-      - name: git-clone-sourcecode
-        taskRef:
-          name: git-clone
-          kind: ClusterTask
-        workspaces:
-          - name: output
-            workspace: repo
-        params:
-          - name: url
-            value: https://github.com/lrhhhhhh/hello.git
-          - name: revision
-            value: $(params.REVISION)
-      - name: git-clone-deployment
-        runAfter:
-          - git-clone-sourcecode
-        taskRef:
-          name: git-clone
-          kind: ClusterTask
-        workspaces:
-          - name: output
-            workspace: repo
-        params:
-          - name: url
-            value: git@github.com:lrhhhhhh/hello-deployments.git
-          - name: revision
-            value: $(params.REVISION)
-          - name: subdirectory
-            value: deployment
-      - name: image-build
-        runAfter:
-          - git-clone-deployment
-        taskRef:
-          name: kaniko
-          kind: ClusterTask
-        workspaces:
-          - name: source
-            workspace: repo
-        params:
-          - name: IMAGE
-            value: ghcr.io/lrhhhhhh/hello:0.0.1-$(tasks.git-clone-sourcecode.results.commit)
-          - name: DOCKERFILE
-            value: ./sourcecode/Dockerfile
-          - name: CONTEXT
-            value: ./sourcecode
-      - name: manifest-update
-        runAfter:
-          - image-build
-        taskRef:
-          name: git-cli
-          kind: ClusterTask
-        workspaces:
-          - name: source
-            workspace: repo
-        params:
-          - name: BASE_IMAGE
-            value: gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0
-          - name: GIT_USER_NAME
-            value: pipelinerobot
-          - name: GIT_USER_EMAIL
-            value: pipelinerobot@nautes.io
-          - name: GIT_SCRIPT
-            value: |
-              cd deployment
-              sed -i -e "s#ghcr.io/lrhhhhhh/hello.*#$(tasks.image-build.results.IMAGE_URL)#g" deployment.yaml
-              git add deployment.yaml
-              git commit -a -m "automatic update by pipeline bot: $(tasks.image-build.results.IMAGE_URL)"
-              git push origin HEAD:$(params.REVISION) --force
-    workspaces:
-      - name: repo
-      - name: empty-dir
+      type: string
+      description: Revision to checkout. (branch, tag, sha, ref, etc...)
+      default: ""
+  tasks:
+    - name: git-clone-sourcecode
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: output
+      params:
+        - name: url
+          value: https://github.com/lrhhhhhh/hello.git
+        - name: revision
+          value: $(params.REVISION)
+        - name: subdirectory
+          value: hello
+    - name: git-clone-deployment
+      runAfter:
+        - git-clone-sourcecode
+      taskRef:
+        name: git-clone
+        kind: ClusterTask
+      workspaces:
+        - name: output
+          workspace: output
+        - name: ssh-directory
+          workspace: ssh-secret
+      params:
+        - name: url
+          value: git@github.com:lrhhhhhh/hello-deployments.git 
+        - name: revision
+          value: $(params.REVISION)
+        - name: subdirectory
+          value: hello-deployments 
+    - name: image-build-and-push
+      runAfter:
+        - git-clone-deployment
+      taskRef:
+        name: kaniko
+        kind: ClusterTask
+      workspaces:
+        - name: source
+          workspace: output
+        - name: dockerconfig
+          workspace: docker-credentials
+      params:
+        - name: IMAGE
+          value: ghcr.io/lrhhhhhh/hello:0.0.1-$(tasks.git-clone-sourcecode.results.commit)
+        - name: DOCKERFILE
+          value: ./hello/src/Dockerfile
+        - name: CONTEXT
+          value: ./hello/src
+        - name: BUILDER_IMAGE
+          value: docker.io/aiotceo/kaniko-executor:v1.5.1
+    - name: manifest-update
+      runAfter:
+        - image-build-and-push
+      taskRef:
+        name: git-cli
+        kind: ClusterTask
+      workspaces:
+        - name: source
+          workspace: output
+        - name: ssh-directory
+          workspace: ssh-secret
+      params:
+        - name: BASE_IMAGE
+          value: gcr.io/tekton-releases/github.com/tektoncd/pipeline/cmd/git-init:v0.29.0
+        - name: GIT_USER_NAME
+          value: lrhhhhhh
+        - name: GIT_USER_EMAIL
+          value: lrhhhhhh@gmail.com
+        - name: GIT_SCRIPT
+          value: |
+            cd hello-deployments
+            sed -i -e "s#ghcr.io/lrhhhhhh/hello.*#$(tasks.image-build-and-push.results.IMAGE_URL)#g" deployment.yaml
+            git add deployment.yaml
+            git commit -a -m "automatic update by pipeline bot: $(tasks.image-build-and-push.results.IMAGE_URL)"
+            git config --list
+            git push origin HEAD:main --force --no-thin
   workspaces:
-    - name: empty-dir
-      emptyDir: {}
-    - name: repo
-      persistentVolumeClaim:
-        claimName: repo-pvc
+    - name: output
+    - name: docker-credentials
+    - name: ssh-secret

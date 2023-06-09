@@ -1,0 +1,24 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: hello-piplinerun
+  namespace: hello
+spec:
+  pipelineRef:
+    name: hello-pipeline
+  podTemplate:
+    securityContext:
+      fsGroup: 65532
+  params:
+  - name: REVISION
+    value: ""
+  workspaces:
+    - name: output
+      persistentVolumeClaim:
+        claimName: repo-pvc
+    - name: docker-credentials
+      secret:
+        secretName: docker-credentials
+    - name: ssh-secret
+      secret:
+        secretName: ssh-secret
