@@ -2,18 +2,18 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: root
-  namespace: hello
+  namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: hello
+  project: hello-cd
   source:
-    path: production
+    path: ./
     repoURL: https://github.com/lrhhhhhh/hello-deployments.git
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: hello
   syncPolicy:
     automated:
       selfHeal: true
